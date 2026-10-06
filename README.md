@@ -67,5 +67,10 @@ npm run build
   `frontend/src/api/local-service.ts`。
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
-- 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 状态流转统一由 `frontend/src/data/action-chain.ts` 这条动作链裁决（来源状态、目标状态、
+  待办标志都在链内一次算出），`local-service.ts` 是唯一调用入口，页面组件不做业务判断。
+  工地接待的专用规则：待接待 → 已接待 → 已归档，待接待/已接待可取消；已取消、已归档为终态，
+  已取消优先于任何后续归档。
+- 存量数据迁移在 `frontend/src/data/migrations.ts`：读取本地数据时自动执行，例如工地接待
+  缺参观区域的记录按「未分配」补齐，历史记录的接待人员与状态保持原样。
 - 想回到初始数据：清掉浏览器里 `field-archaeology-digital:entries` 这一项，或调用 `resetModule(模块)`。

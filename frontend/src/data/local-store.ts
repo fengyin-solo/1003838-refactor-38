@@ -1,3 +1,4 @@
+import { migrateEntries } from './migrations'
 import { SEED_ROWS } from './seed'
 import type { EntryRow } from './types'
 
@@ -20,7 +21,10 @@ function readStorage(): Record<string, EntryRow[]> {
   }
   try {
     const parsed = JSON.parse(raw) as Record<string, EntryRow[]>
-    return { ...fallback, ...parsed }
+    // 合并示例数据后先过一遍存量迁移，再把迁移结果回写，之后读到的都是新结构。
+    const merged = migrateEntries({ ...fallback, ...parsed })
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+    return merged
   } catch {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
     return fallback
@@ -42,10 +46,11 @@ export function listRows(key: string): EntryRow[] {
 
 export function saveRows(key: string, rows: EntryRow[]): void {
   const next = { ...allRows(), [key]: rows }
-  cache = next
+  // 先落盘再换缓存：写盘失败时内存也不动，调用方看到的还是旧数据，不会出现半更新。
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
+  cache = next
 }
 
 export function resetRows(key: string): EntryRow[] {

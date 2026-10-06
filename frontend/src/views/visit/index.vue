@@ -47,7 +47,7 @@
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
-              v-for="action in actions"
+              v-for="action in rowActions(row)"
               :key="action"
               class="link"
               type="button"
@@ -55,6 +55,7 @@
             >
               {{ action }}
             </button>
+            <span v-if="!rowActions(row).length" class="empty-state">无可执行动作</span>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -74,6 +75,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  availableActions,
   downloadEntries,
   listEntries,
   moduleMeta,
@@ -83,7 +85,6 @@ import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('visit')
 const columns = ["来访编号", "来访单位", "来访人数", "参观日期", "接待人员", "参观区域", "备注事项", "记录状态"]
-const actions = ["完成接待", "提交归档", "取消接待"]
 const statuses = ["待接待", "已接待", "已归档", "已取消"]
 const stats = [{"label": "本月接待次数", "value": 0}, {"label": "累计参观人数", "value": 0}, {"label": "待接待批次", "value": 0}]
 
@@ -120,6 +121,11 @@ function runAction(action: string, row: EntryRow) {
     return
   }
   reload()
+}
+
+// 每行能点哪些动作由动作链统一裁决：已取消、已归档的记录这里直接不给出按钮。
+function rowActions(row: EntryRow): string[] {
+  return availableActions(meta, row)
 }
 
 function reload() {

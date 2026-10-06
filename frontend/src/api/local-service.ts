@@ -1,9 +1,10 @@
+import { planTransition, rowPending } from '@/data/action-chain'
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
-// 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
-const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+// 页面要渲染「可执行动作」时也从动作链取，和服务端判断保持同一份规则。
+export { availableActions } from '@/data/action-chain'
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -30,30 +31,28 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
-  const target = meta.actionTargets[action]
-  if (!target) {
-    return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
-  }
   const rows = listRows(key)
   const index = rows.findIndex((row) => Number(row.id) === id)
   if (index < 0) {
     return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
   }
-  const current = String(rows[index].status)
-  if (current === target) {
-    return { ok: false, message: `${meta.entity}已经是「${target}」，不用重复操作` }
-  }
-  const lastStatus = meta.statuses[meta.statuses.length - 1]
-  const updated: EntryRow = {
-    ...rows[index],
-    status: target,
-    pending: target !== lastStatus,
-    abnormal: NEGATIVE_ACTIONS.some((verb) => action.startsWith(verb)),
+  // 列表、详情、状态按钮都汇到这一条动作链：能不能做、做完状态与待办是什么，出自同一份计划。
+  const plan = planTransition(meta, rows[index], action)
+  if (!plan.ok) {
+    return { ok: false, message: plan.message }
   }
   const next = [...rows]
-  next[index] = updated
-  saveRows(key, next)
-  return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
+  next[index] = plan.next
+  // 状态与待办标志在同一行里一次写盘；任一步失败整体不生效，不会只更新列表状态而漏掉待办。
+  try {
+    saveRows(key, next)
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : `${meta.entity}${action}写入失败`,
+    }
+  }
+  return { ok: true, message: `${meta.entity}已${action}，当前状态「${plan.next.status}」` }
 }
 
 export function resetModule(key: string): PageResult {
@@ -91,7 +90,8 @@ export function loadOverview(): OverviewResult {
     return {
       name: meta.name,
       created: entries.length,
-      pending: entries.filter((row) => row.pending).length,
+      // 待办口径与接待动作同源：动作链说是待办，概览才算待办。
+      pending: entries.filter((row) => rowPending(meta, row)).length,
       abnormal: entries.filter((row) => row.abnormal).length,
     }
   })
