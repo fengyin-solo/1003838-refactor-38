@@ -68,4 +68,11 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 工地接待的「完成接待 / 提交归档 / 取消接待」收拢到 `frontend/src/data/visit.ts` 的
+  **单一动作链**（校验动作 → 定位记录 → 裁决流转 → 提交 → 结果投影）。列表行按钮与详情弹层
+  按钮共用这一条链；动作回参里的列表结果与概览待办汇总来自同一份快照，任一步失败都不会只改
+  列表而漏掉待办。裁决规则：**已取消优先于任何后续归档**（取消后需重新接待才能归档）；
+  取消后的记录可再次完成接待；已归档取消后回到待接待；流转不覆盖历史接待人。
+- 存量来访记录缺少「参观区域」时，在读入时按「未分配」幂等迁移，原接待人与状态保留
+  （见 `local-store.ts` 的迁移与 `visit.ts` 的 `migrateVisitRow`）。
 - 想回到初始数据：清掉浏览器里 `field-archaeology-digital:entries` 这一项，或调用 `resetModule(模块)`。

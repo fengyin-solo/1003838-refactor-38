@@ -1,9 +1,16 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  runVisitChain,
+  summarizeVisit,
+  visitAllowedActions,
+} from '@/data/visit'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+
+const VISIT_KEY = 'visit'
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -28,8 +35,38 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
-export function runAction(key: string, id: number, action: string): ActionResult {
+/** 接待模块的唯一结果投影：列表分页与概览待办都从同一份行数据取，不允许各算各的。 */
+export function visitSnapshot(
+  rows: EntryRow[] = listRows(VISIT_KEY),
+  filters: Record<string, string> = {},
+): { list: PageResult; summary: ReturnType<typeof summarizeVisit> } {
+  const items = filterRows(rows, filters)
+  return {
+    list: { items, total: items.length, page: 1, size: items.length },
+    summary: summarizeVisit(rows),
+  }
+}
+
+export { visitAllowedActions }
+
+export function runAction(
+  key: string,
+  id: number,
+  action: string,
+  filters: Record<string, string> = {},
+): ActionResult {
   const meta = moduleMeta(key)
+  // 工地接待的三个动作收拢到单一动作链：校验、定位、裁决、提交、结果投影共用一条链。
+  if (key === VISIT_KEY) {
+    return runVisitChain({
+      meta,
+      id,
+      action,
+      loadRows: () => listRows(key),
+      commit: (rows) => saveRows(key, rows),
+      project: (rows) => visitSnapshot(rows, filters),
+    })
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
@@ -88,6 +125,16 @@ export function loadOverview(): OverviewResult {
   const rows = allRows()
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
     const entries = rows[meta.key] ?? []
+    // 工地接待的待办/异常直接取动作链同一份汇总口径，与接待页动作回参永不分叉。
+    if (meta.key === VISIT_KEY) {
+      const summary = summarizeVisit(entries)
+      return {
+        name: meta.name,
+        created: entries.length,
+        pending: summary.pending,
+        abnormal: summary.cancelled,
+      }
+    }
     return {
       name: meta.name,
       created: entries.length,

@@ -27,9 +27,23 @@ export type PageResult = {
   size: number
 }
 
+export type VisitSummary = {
+  total: number
+  pending: number
+  received: number
+  archived: number
+  cancelled: number
+  monthReceived: number
+  totalVisitors: number
+}
+
 export type ActionResult = {
   ok: boolean
   message: string
+  // 接待动作成功时，列表分页与概览待办同出自这一份结果，避免两边各算各的。
+  list?: PageResult
+  summary?: VisitSummary
+  row?: EntryRow
 }
 
 export type OverviewResult = {
